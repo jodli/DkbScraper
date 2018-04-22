@@ -17,6 +17,13 @@ async function typeInInputField(inputField, text) {
   });
 }
 
+async function waitForNavigation(page) {
+  log.info("Waiting for a page reload.");
+  await page.waitForNavigation({
+    waitUntil: "domcontentloaded"
+  });
+}
+
 async function startAndNavigateToLoginPage(options) {
   log.info("Setting up browser.");
   const browser = await puppeteer.launch({
@@ -68,6 +75,8 @@ async function performLogout(page) {
     interactiveMode: true
   });
   await performLogin(page);
+
+  await waitForNavigation(page);
 
   await performLogout(page);
 })().catch(error => {
