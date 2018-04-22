@@ -57,12 +57,19 @@ async function performLogin(page) {
   await page.click(process.env.LOGIN_BUTTON);
 }
 
+async function performLogout(page) {
+  log.info("Pressing logout button.");
+  await page.click(process.env.LOGOUT_BUTTON);
+}
+
 (async () => {
   log.setLevel(log.levels.TRACE);
   const { page, browser } = await startAndNavigateToLoginPage({
     interactiveMode: true
   });
   await performLogin(page);
+
+  await performLogout(page);
 })().catch(error => {
   log.error(error);
 });
