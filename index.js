@@ -150,12 +150,10 @@ async function selectTimeRange(page, timeRange) {
   const fromInputField = await focusInputField(page, fromInputSelector);
   await selectAllText(page);
   await typeInInputField(fromInputField, timeRange.from);
-  await page.waitFor(1000);
 
   const toInputField = await focusInputField(page, toInputSelector);
   await selectAllText(page);
   await typeInInputField(toInputField, timeRange.to);
-  await page.waitFor(1000);
 
   page.click(process.env.TRANSACTIONS_SEARCH);
   await waitForLoadingElements(page);
@@ -178,6 +176,19 @@ async function getTransactions(page) {
   return transactions;
 }
 
+async function getTransactionsForAccount(page, account, timeRange) {
+  await selectAccount(page, account);
+
+  timeRange.type =
+    account.label.indexOf("Kreditkarte") !== -1
+      ? TransactionType.credit
+      : TransactionType.debit;
+
+  await selectTimeRange(page, timeRange);
+
+  let transactions = await getTransactions(page);
+}
+
 (async () => {
   log.setLevel(log.levels.TRACE);
   const { page, browser } = await startAndNavigateToLoginPage({
@@ -189,18 +200,22 @@ async function getTransactions(page) {
 
   const allAccounts = await getAllAccounts(page);
 
-  await selectAccount(page, allAccounts[4]);
-
-  await selectTimeRange(page, {
-    type: TransactionType.credit,
-    from: "13.04.2018",
-    to: "14.04.2018"
+  await getTransactionsForAccount(page, allAccounts[4], {
+    from: "12.04.2018",
+    to: "22.04.2018"
   });
 
-  let transactions = await getTransactions(page);
+  await getTransactionsForAccount(page, allAccounts[0], {
+    from: "12.04.2018",
+    to: "22.04.2018"
+  });
 
   await page.waitFor(5000);
   await performLogout(page);
+
+  await page.waitFor(5000);
+  browser.close();
+  log.info("Closed browser.");
 })().catch(error => {
   log.error(error);
 });
