@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 const log = require("loglevel");
 
-require("dotenv").config();
+require("dotenv-safe").config();
 
 async function focusInputField(page, selector) {
   log.info("Focusing input field");
