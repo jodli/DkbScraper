@@ -18,9 +18,9 @@ async function typeInInputField(inputField, text) {
 }
 
 async function waitForNavigation(page) {
-  log.info("Waiting for a page reload.");
+  log.info("Waiting for the navigation to complete.");
   await page.waitForNavigation({
-    waitUntil: "domcontentloaded"
+    waitUntil: "networkidle0"
   });
 }
 
@@ -62,11 +62,18 @@ async function performLogin(page) {
 
   log.info("Pressing login button.");
   await page.click(process.env.LOGIN_BUTTON);
+
+  await waitForNavigation(page);
 }
 
 async function performLogout(page) {
   log.info("Pressing logout button.");
   await page.click(process.env.LOGOUT_BUTTON);
+}
+
+async function navigateToTransactions(page) {
+  log.info("Navigating to Transaction page.");
+  await page.click(process.env.TRANSACTIONS);
 }
 
 (async () => {
@@ -76,7 +83,17 @@ async function performLogout(page) {
   });
   await performLogin(page);
 
-  await waitForNavigation(page);
+  await navigateToTransactions(page);
+
+  await page.waitForSelector(process.env.ACCOUNT_SELECT, {
+    visible: true
+  });
+
+  const accounts = await page.evaluate(selector => {
+    var options = Array.from(document.querySelectorAll(selector));
+    return options.map(option => option.textContent.trim());
+  }, process.env.ACCOUNT_SELECT);
+  log.info(accounts);
 
   await performLogout(page);
 })().catch(error => {
