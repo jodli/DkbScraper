@@ -1,7 +1,30 @@
 const puppeteer = require("puppeteer");
 const log = require("loglevel");
 
-require("dotenv-safe").config();
+require("dotenv").config();
+
+// URLs
+const BaseUrl = "https://www.dkb.de/banking";
+
+// Selectors
+const AjaxLoadingSpinner = "body > div.ajax_loading";
+
+const LoginNameInput = "#loginInputSelector";
+const LoginPinInput = "#pinInputSelector";
+const LoginButton = "#buttonlogin";
+const LogoutButton = "#logout";
+
+const TransactionsMenu = "#menu_0\\2e 0\\2e 0-node";
+
+const AccountSelect = "select[id$='_slAllAccounts']";
+
+const TransactionsDebitFrom = "input[id$='_transactionDate']";
+const TransactionsDebitTo = "input[id$='_toTransactionDate']";
+const TransactionsCreditFrom = "input[id$='_postingDate']";
+const TransactionsCreditTo = "input[id$='_toPostingDate']";
+const TransactionsSearchButton = "#searchbutton";
+
+const TransactionsResultClass = "mainRow";
 
 const TransactionType = Object.freeze({ debit: 0, credit: 1 });
 
@@ -36,7 +59,7 @@ async function waitForNavigation(page) {
 
 async function waitForLoadingElements(page) {
   log.info("Waiting for loading elements to be removed.");
-  await page.waitForSelector(process.env.AJAX_LOADING, {
+  await page.waitForSelector(AjaxLoadingSpinner, {
     hidden: true
   });
 }
@@ -54,7 +77,7 @@ async function startAndNavigateToLoginPage(options) {
     width: 1280,
     height: 1280
   });
-  await page.goto(process.env.BASE_URL, {
+  await page.goto(BaseUrl, {
     waitUntil: "domcontentloaded"
   });
 
@@ -64,84 +87,86 @@ async function startAndNavigateToLoginPage(options) {
 
 async function performLogin(page) {
   log.info("Select name input field.");
-  const nameInputField = await focusInputField(
-    page,
-    process.env.LOGIN_NAME_INPUT
-  );
+  const nameInputField = await focusInputField(page, LoginNameInput);
   await typeInInputField(nameInputField, process.env.LOGIN_NAME);
 
   log.info("Select pin input field.");
-  const pinInputField = await focusInputField(
-    page,
-    process.env.LOGIN_PIN_INPUT
-  );
+  const pinInputField = await focusInputField(page, LoginPinInput);
   await typeInInputField(pinInputField, process.env.LOGIN_PIN);
 
   log.info("Pressing login button.");
-  await page.click(process.env.LOGIN_BUTTON);
+  await page.click(LoginButton);
 
   await waitForNavigation(page);
 }
 
 async function performLogout(page) {
   log.info("Pressing logout button.");
-  await page.click(process.env.LOGOUT_BUTTON);
+  await page.click(LogoutButton);
 }
 
 async function navigateToTransactions(page) {
   log.info("Navigating to Transaction page.");
-  page.click(process.env.TRANSACTIONS);
+  page.click(TransactionsMenu);
   await waitForLoadingElements(page);
   await page.waitFor(1000);
 }
 
 async function getAllAccounts(page) {
   log.info("Waiting for account dropdown box appears.");
-  await page.waitForSelector(process.env.ACCOUNT_SELECT, {
+  await page.waitForSelector(AccountSelect, {
     visible: true
   });
 
   log.info("Getting all accounts from dropdown box.");
-  const accounts = await page.evaluate(selector => {
-    const options = Array.from(document.querySelector(selector).options);
-    return options.map(option => {
-      return {
-        label: option.label,
-        value: option.value,
-        selected: option.selected
-      };
-    });
-  }, process.env.ACCOUNT_SELECT);
+  const accounts = await page.evaluate(
+    (selector, transactionType) => {
+      const options = Array.from(document.querySelector(selector).options);
+      return options.map(option => {
+        let account = {
+          id: option.value,
+          name: option.label
+        };
+        account.type =
+          account.name.indexOf("Kreditkarte") !== -1
+            ? transactionType.credit
+            : transactionType.debit;
+        return account;
+      });
+    },
+    AccountSelect,
+    TransactionType
+  );
   log.info(accounts);
 
   return accounts;
 }
 
 async function selectAccount(page, account) {
-  log.info("Selecting account:", account.label);
-  page.select(process.env.ACCOUNT_SELECT, account.value);
+  log.info("Selecting account:", account.name);
+  page.select(AccountSelect, account.id);
   await waitForLoadingElements(page);
   await page.waitFor(1000);
 }
 
-async function selectTimeRange(page, timeRange) {
+async function selectTimeRange(page, account, timeRange) {
   log.info(
     "Selecting time range for",
-    timeRange.type,
+    account.type,
     ":",
     timeRange.from,
     "-",
     timeRange.to
   );
 
-  switch (timeRange.type) {
+  switch (account.type) {
     case TransactionType.credit:
-      fromInputSelector = process.env.TRANSACTIONS_CREDIT_FROM;
-      toInputSelector = process.env.TRANSACTIONS_CREDIT_TO;
+      fromInputSelector = TransactionsCreditFrom;
+      toInputSelector = TransactionsCreditTo;
       break;
     case TransactionType.debit:
-      fromInputSelector = process.env.TRANSACTIONS_DEBIT_FROM;
-      toInputSelector = process.env.TRANSACTIONS_DEBIT_TO;
+      fromInputSelector = TransactionsDebitFrom;
+      toInputSelector = TransactionsDebitTo;
       break;
     default:
       reject();
@@ -155,7 +180,7 @@ async function selectTimeRange(page, timeRange) {
   await selectAllText(page);
   await typeInInputField(toInputField, timeRange.to);
 
-  page.click(process.env.TRANSACTIONS_SEARCH);
+  page.click(TransactionsSearchButton);
   await waitForLoadingElements(page);
   await page.waitFor(1000);
 }
@@ -170,7 +195,7 @@ async function getTransactions(page) {
         return td.innerText.trim();
       });
     });
-  }, process.env.TRANSACTIONS_RESULT_CLASS);
+  }, TransactionsResultClass);
   log.info(transactions);
 
   return transactions;
@@ -178,13 +203,8 @@ async function getTransactions(page) {
 
 async function getTransactionsForAccount(page, account, timeRange) {
   await selectAccount(page, account);
-
-  timeRange.type =
-    account.label.indexOf("Kreditkarte") !== -1
-      ? TransactionType.credit
-      : TransactionType.debit;
-
-  await selectTimeRange(page, timeRange);
+  await selectTimeRange(page, account, timeRange);
+  await page.waitFor(250);
 
   let transactions = await getTransactions(page);
 }
@@ -199,16 +219,14 @@ async function getTransactionsForAccount(page, account, timeRange) {
   await navigateToTransactions(page);
 
   const allAccounts = await getAllAccounts(page);
-
-  await getTransactionsForAccount(page, allAccounts[4], {
+  const timeRange = {
     from: "12.04.2018",
     to: "22.04.2018"
-  });
+  };
 
-  await getTransactionsForAccount(page, allAccounts[0], {
-    from: "12.04.2018",
-    to: "22.04.2018"
-  });
+  for (let index = 0; index < allAccounts.length; index++) {
+    await getTransactionsForAccount(page, allAccounts[index], timeRange);
+  }
 
   await page.waitFor(5000);
   await performLogout(page);
