@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer");
 const log = require("loglevel");
 const path = require("path");
+const program = require("commander");
 
 require("dotenv").config();
 
@@ -28,6 +29,8 @@ const TransactionsSearchButton = "#searchbutton";
 const TransactionsResultClass = "mainRow";
 
 const TransactionType = Object.freeze({ debit: 0, credit: 1 });
+
+exports = module.exports = this;
 
 async function focusInputField(page, selector) {
   log.info("Focusing input field");
@@ -215,57 +218,119 @@ async function getTransactionsForAccount(page, account, timeRange) {
   let transactions = await getTransactions(page);
 }
 
-async function logoutAndClose(browser, page) {
-  await performLogout(page);
-  await createScreenshot(page, path.join("./screenshots", "after_logout.png"));
+class DkbScraper {
+  constructor(options) {
+    this.options = options;
+  }
 
-  browser.close();
-  log.info("Closed browser.");
+  scrape(accounts) {
+    (async accounts => {
+      const { page, browser } = await startAndNavigateToLoginPage({
+        interactiveMode: this.options.interactiveMode,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      });
+
+      await createScreenshot(
+        page,
+        path.join(this.options.screenshotDir, "before_login.png")
+      );
+      await performLogin(page);
+
+      try {
+        await navigateToTransactions(page);
+      } catch (error) {
+        log.error("navigateToTransactions:", error);
+        await createScreenshot(
+          page,
+          path.join(this.options.screenshotDir, "error.png")
+        );
+        process.exit(1);
+      }
+
+      const timeRange = { from: this.options.from, to: this.options.to };
+      let allAccounts;
+      try {
+        allAccounts = await getAllAccounts(page);
+      } catch (error) {
+        log.error("getAllAccounts:", error);
+        await createScreenshot(
+          page,
+          path.join(this.options.screenshotDir, "error.png")
+        );
+        process.exit(1);
+      }
+
+      // TODO: Add function to parse the accounts.
+      for (let index = 0; index < allAccounts.length; index++) {
+        try {
+          await getTransactionsForAccount(page, allAccounts[index], timeRange);
+        } catch (error) {
+          log.error("getTransactionsForAccount:", error);
+          await createScreenshot(
+            page,
+            path.join(this.options.screenshotDir, "error.png")
+          );
+          process.exit(1);
+        }
+      }
+
+      await performLogout(page);
+      await createScreenshot(
+        page,
+        path.join(this.options.screenshotDir, "after_logout.png")
+      );
+
+      browser.close();
+      log.info("Closed browser.");
+      process.exit(0);
+    })().catch(error => {
+      log.error("globalScope:", error);
+      process.exit(1);
+    });
+  }
 }
 
-(async () => {
-  log.setLevel(log.levels.TRACE);
-  const { page, browser } = await startAndNavigateToLoginPage({
-    interactiveMode: true
-  });
-  await createScreenshot(page, path.join("./screenshots", "before_login.png"));
-  await performLogin(page);
+log.setLevel("warn");
+program.version("0.1.0");
 
-  try {
-    await navigateToTransactions(page);
-  } catch (error) {
-    log.error("navigateToTransactions:", error);
-    await createScreenshot(page, path.join("./screenshots", "error.png"));
-    process.exit(1);
-  }
-
-  let allAccounts;
-  try {
-    allAccounts = await getAllAccounts(page);
-  } catch (error) {
-    log.error("getAllAccounts:", error);
-    await createScreenshot(page, path.join("./screenshots", "error.png"));
-    process.exit(1);
-  }
-
-  const timeRange = {
-    from: "12.04.2018",
-    to: "22.04.2018"
-  };
-
-  for (let index = 0; index < allAccounts.length; index++) {
-    try {
-      await getTransactionsForAccount(page, allAccounts[index], timeRange);
-    } catch (error) {
-      log.error("getTransactionsForAccount:", error);
-      await createScreenshot(page, path.join("./screenshots", "error.png"));
-      process.exit(1);
+program
+  .command("scrape [accounts...]")
+  .description(
+    "Which account(s)? Either specify a IBAN or the credit card number in the following format: "
+  )
+  .option("--from <from>", "From which date?")
+  .option("--to <to>", "Until which date?")
+  .option("-v, --verbose", "Enables verbose logging.")
+  .option("-t, --trace", "Enables trace logging.")
+  .option(
+    "-s, --screenshotDir <screenshotDir>",
+    "Specifies visual logging via screenshots."
+  )
+  .option("-i, --interactive-mode", "Shows the browser window.")
+  .action((accounts, options) => {
+    if (accounts.length === 0 || !options.from || !options.to) {
+      program.help();
     }
-  }
+    if (options.verbose) {
+      log.setLevel("info");
+      log.info("Enabled verbose logging.");
+    }
+    if (options.trace) {
+      log.enableAll();
+      log.trace("Enabled trace logging.");
+    }
+    options.interactiveMode = options.interactiveMode || false;
+    if (options.interactiveMode) {
+      log.info("Running the browser in interactive mode.");
+    }
+    options.screenshotDir = options.screenshotDir || "./screenshots";
+    if (options.screenshotDir) {
+      log.info("Enabled screenshots to: " + options.screenshotDir);
+    }
 
-  await logoutAndClose(browser, page);
-  process.exit(0);
-})().catch(error => {
-  log.error("globalScope:", error);
-  process.exit(1);
-});
+    log.info("Scraping transactions for accounts:", accounts);
+    const scraper = new DkbScraper(options);
+    scraper.scrape(accounts);
+  });
+
+program.parse(process.argv);
