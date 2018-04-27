@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer");
 const log = require("loglevel");
+const path = require("path");
 
 require("dotenv").config();
 
@@ -62,6 +63,11 @@ async function waitForLoadingElements(page) {
   await page.waitForSelector(AjaxLoadingSpinner, {
     hidden: true
   });
+}
+
+async function createScreenshot(page, outFile) {
+  log.debug("Taking screenshot to file:", outFile);
+  await page.screenshot({ path: outFile });
 }
 
 async function startAndNavigateToLoginPage(options) {
@@ -211,18 +217,10 @@ async function getTransactionsForAccount(page, account, timeRange) {
 
 async function logoutAndClose(browser, page) {
   await performLogout(page);
+  await createScreenshot(page, path.join("./screenshots", "after_logout.png"));
 
-  await page.waitFor(5000);
   browser.close();
   log.info("Closed browser.");
-}
-
-async function tryToShutdownSafely(browser, page) {
-  try {
-    await logoutAndClose(browser, page);
-  } catch (error) {}
-
-  process.exit(1);
 }
 
 (async () => {
@@ -230,20 +228,24 @@ async function tryToShutdownSafely(browser, page) {
   const { page, browser } = await startAndNavigateToLoginPage({
     interactiveMode: true
   });
+  await createScreenshot(page, path.join("./screenshots", "before_login.png"));
   await performLogin(page);
 
   try {
     await navigateToTransactions(page);
   } catch (error) {
-    log.error(error);
-    await tryToShutdownSafely(page);
+    log.error("navigateToTransactions:", error);
+    await createScreenshot(page, path.join("./screenshots", "error.png"));
+    process.exit(1);
   }
 
+  let allAccounts;
   try {
-    const allAccounts = await getAllAccounts(page);
+    allAccounts = await getAllAccounts(page);
   } catch (error) {
-    log.error(error);
-    await tryToShutdownSafely(page);
+    log.error("getAllAccounts:", error);
+    await createScreenshot(page, path.join("./screenshots", "error.png"));
+    process.exit(1);
   }
 
   const timeRange = {
@@ -255,14 +257,15 @@ async function tryToShutdownSafely(browser, page) {
     try {
       await getTransactionsForAccount(page, allAccounts[index], timeRange);
     } catch (error) {
-      log.error(error);
-      await tryToShutdownSafely(page);
+      log.error("getTransactionsForAccount:", error);
+      await createScreenshot(page, path.join("./screenshots", "error.png"));
+      process.exit(1);
     }
   }
 
   await logoutAndClose(browser, page);
   process.exit(0);
 })().catch(error => {
-  log.error(error);
+  log.error("globalScope:", error);
   process.exit(1);
 });
