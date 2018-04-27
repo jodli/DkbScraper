@@ -209,6 +209,22 @@ async function getTransactionsForAccount(page, account, timeRange) {
   let transactions = await getTransactions(page);
 }
 
+async function logoutAndClose(browser, page) {
+  await performLogout(page);
+
+  await page.waitFor(5000);
+  browser.close();
+  log.info("Closed browser.");
+}
+
+async function tryToShutdownSafely(browser, page) {
+  try {
+    await logoutAndClose(browser, page);
+  } catch (error) {}
+
+  process.exit(1);
+}
+
 (async () => {
   log.setLevel(log.levels.TRACE);
   const { page, browser } = await startAndNavigateToLoginPage({
@@ -216,24 +232,37 @@ async function getTransactionsForAccount(page, account, timeRange) {
   });
   await performLogin(page);
 
-  await navigateToTransactions(page);
+  try {
+    await navigateToTransactions(page);
+  } catch (error) {
+    log.error(error);
+    await tryToShutdownSafely(page);
+  }
 
-  const allAccounts = await getAllAccounts(page);
+  try {
+    const allAccounts = await getAllAccounts(page);
+  } catch (error) {
+    log.error(error);
+    await tryToShutdownSafely(page);
+  }
+
   const timeRange = {
     from: "12.04.2018",
     to: "22.04.2018"
   };
 
   for (let index = 0; index < allAccounts.length; index++) {
-    await getTransactionsForAccount(page, allAccounts[index], timeRange);
+    try {
+      await getTransactionsForAccount(page, allAccounts[index], timeRange);
+    } catch (error) {
+      log.error(error);
+      await tryToShutdownSafely(page);
+    }
   }
 
-  await page.waitFor(5000);
-  await performLogout(page);
-
-  await page.waitFor(5000);
-  browser.close();
-  log.info("Closed browser.");
+  await logoutAndClose(browser, page);
+  process.exit(0);
 })().catch(error => {
   log.error(error);
+  process.exit(1);
 });
