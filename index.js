@@ -223,70 +223,78 @@ class DkbScraper {
     this.options = options;
   }
 
-  scrape(accounts) {
-    (async accounts => {
-      const { page, browser } = await startAndNavigateToLoginPage({
-        interactiveMode: this.options.interactiveMode,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
-      });
-
-      await createScreenshot(
-        page,
-        path.join(this.options.screenshotDir, "before_login.png")
-      );
-      await performLogin(page);
-
-      try {
-        await navigateToTransactions(page);
-      } catch (error) {
-        log.error("navigateToTransactions:", error);
-        await createScreenshot(
-          page,
-          path.join(this.options.screenshotDir, "error.png")
-        );
-        process.exit(1);
-      }
-
-      const timeRange = { from: this.options.from, to: this.options.to };
-      let allAccounts;
-      try {
-        allAccounts = await getAllAccounts(page);
-      } catch (error) {
-        log.error("getAllAccounts:", error);
-        await createScreenshot(
-          page,
-          path.join(this.options.screenshotDir, "error.png")
-        );
-        process.exit(1);
-      }
-
-      // TODO: Add function to parse the accounts.
-      for (let index = 0; index < allAccounts.length; index++) {
-        try {
-          await getTransactionsForAccount(page, allAccounts[index], timeRange);
-        } catch (error) {
-          log.error("getTransactionsForAccount:", error);
-          await createScreenshot(
-            page,
-            path.join(this.options.screenshotDir, "error.png")
-          );
-          process.exit(1);
-        }
-      }
-
-      await performLogout(page);
-      await createScreenshot(
-        page,
-        path.join(this.options.screenshotDir, "after_logout.png")
-      );
-
-      browser.close();
-      log.info("Closed browser.");
-      process.exit(0);
-    })().catch(error => {
-      log.error("globalScope:", error);
-      process.exit(1);
+  async scrape(accounts) {
+    const { page, browser } = await startAndNavigateToLoginPage({
+      interactiveMode: this.options.interactiveMode,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
+
+    await createScreenshot(
+      page,
+      path.join(this.options.screenshotDir, "before_login.png")
+    );
+    await performLogin(page);
+
+    try {
+      await navigateToTransactions(page);
+    } catch (error) {
+      log.error("navigateToTransactions:", error);
+      await createScreenshot(
+        page,
+        path.join(this.options.screenshotDir, "error.png")
+      );
+      process.exit(1);
+    }
+
+    const timeRange = { from: this.options.from, to: this.options.to };
+    let allAccounts;
+    try {
+      allAccounts = await getAllAccounts(page);
+    } catch (error) {
+      log.error("getAllAccounts:", error);
+      await createScreenshot(
+        page,
+        path.join(this.options.screenshotDir, "error.png")
+      );
+      process.exit(1);
+    }
+
+    const accountsToScrape = allAccounts.filter(
+      allAccount =>
+        accounts.filter(account => allAccount.name.indexOf(account) !== -1)
+          .length > 0
+    );
+    log.info(
+      "Getting the transactions for the accounts:",
+      accountsToScrape.name
+    );
+
+    for (let index = 0; index < accountsToScrape.length; index++) {
+      try {
+        await getTransactionsForAccount(
+          page,
+          accountsToScrape[index],
+          timeRange
+        );
+      } catch (error) {
+        log.error("getTransactionsForAccount:", error);
+        await createScreenshot(
+          page,
+          path.join(this.options.screenshotDir, "error.png")
+        );
+        process.exit(1);
+      }
+    }
+
+    await performLogout(page);
+    await createScreenshot(
+      page,
+      path.join(this.options.screenshotDir, "after_logout.png")
+    );
+
+    browser.close();
+    log.info("Closed browser.");
+    process.exit(0);
   }
 }
 
@@ -307,7 +315,7 @@ program
     "Specifies visual logging via screenshots."
   )
   .option("-i, --interactive-mode", "Shows the browser window.")
-  .action((accounts, options) => {
+  .action(async (accounts, options) => {
     if (accounts.length === 0 || !options.from || !options.to) {
       program.help();
     }
@@ -330,7 +338,10 @@ program
 
     log.info("Scraping transactions for accounts:", accounts);
     const scraper = new DkbScraper(options);
-    scraper.scrape(accounts);
+    await scraper.scrape(accounts).catch(error => {
+      log.error("globalScope:", error);
+      process.exit(1);
+    });
   });
 
 program.parse(process.argv);
