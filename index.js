@@ -33,14 +33,14 @@ const TransactionType = Object.freeze({ debit: 0, credit: 1 });
 exports = module.exports = this;
 
 async function focusInputField(page, selector) {
-  log.info("Focusing input field");
+  log.debug("Focusing input field");
   const inputField = await page.$(selector);
   await inputField.focus();
   return inputField;
 }
 
 async function selectAllText(page) {
-  log.info("Selecting all text");
+  log.debug("Selecting all text");
   await page.keyboard.down("Control");
   await page.keyboard.down("A");
   await page.keyboard.up("A");
@@ -48,21 +48,21 @@ async function selectAllText(page) {
 }
 
 async function typeInInputField(inputField, text) {
-  log.info("Typing text", text);
+  log.debug("Typing text", text);
   await inputField.type(text, {
     delay: 10
   });
 }
 
 async function waitForNavigation(page) {
-  log.info("Waiting for the navigation to complete.");
+  log.debug("Waiting for the navigation to complete.");
   await page.waitForNavigation({
     waitUntil: "networkidle0"
   });
 }
 
 async function waitForLoadingElements(page) {
-  log.info("Waiting for loading elements to be removed.");
+  log.debug("Waiting for loading elements to be removed.");
   await page.waitForSelector(AjaxLoadingSpinner, {
     hidden: true
   });
@@ -78,7 +78,7 @@ async function startAndNavigateToLoginPage(options) {
   const browser = await puppeteer.launch({
     headless: !options.interactiveMode,
     timeout: 60000,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    args: options.args
   });
 
   const page = await browser.newPage();
@@ -95,22 +95,24 @@ async function startAndNavigateToLoginPage(options) {
 }
 
 async function performLogin(page) {
-  log.info("Select name input field.");
+  log.info("Performing Login.");
+  log.debug("Select name input field.");
   const nameInputField = await focusInputField(page, LoginNameInput);
   await typeInInputField(nameInputField, process.env.LOGIN_NAME);
 
-  log.info("Select pin input field.");
+  log.debug("Select pin input field.");
   const pinInputField = await focusInputField(page, LoginPinInput);
   await typeInInputField(pinInputField, process.env.LOGIN_PIN);
 
-  log.info("Pressing login button.");
+  log.debug("Pressing login button.");
   await page.click(LoginButton);
 
   await waitForNavigation(page);
 }
 
 async function performLogout(page) {
-  log.info("Pressing logout button.");
+  log.info("Performing Logout.");
+  log.debug("Pressing logout button.");
   await page.click(LogoutButton);
 }
 
@@ -122,7 +124,7 @@ async function navigateToTransactions(page) {
 }
 
 async function getAllAccounts(page) {
-  log.info("Waiting for account dropdown box appears.");
+  log.debug("Waiting for account dropdown box to appear.");
   await page.waitForSelector(AccountSelect, {
     visible: true
   });
@@ -146,7 +148,7 @@ async function getAllAccounts(page) {
     AccountSelect,
     TransactionType
   );
-  log.info(accounts);
+  log.debug(accounts);
 
   return accounts;
 }
@@ -205,12 +207,14 @@ async function getTransactions(page) {
       });
     });
   }, TransactionsResultClass);
-  log.info(transactions);
+  log.debug(transactions);
 
   return transactions;
 }
 
 async function getTransactionsForAccount(page, account, timeRange) {
+  log.info("Getting transactions for account:", account);
+
   await selectAccount(page, account);
   await selectTimeRange(page, account, timeRange);
   await page.waitFor(250);
@@ -263,10 +267,6 @@ class DkbScraper {
       allAccount =>
         accounts.filter(account => allAccount.name.indexOf(account) !== -1)
           .length > 0
-    );
-    log.info(
-      "Getting the transactions for the accounts:",
-      accountsToScrape.name
     );
 
     for (let index = 0; index < accountsToScrape.length; index++) {
