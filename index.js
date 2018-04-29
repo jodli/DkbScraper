@@ -2,6 +2,7 @@ const puppeteer = require("puppeteer");
 const log = require("loglevel");
 const path = require("path");
 const program = require("commander");
+const fs = require("fs-extra");
 
 require("dotenv").config();
 
@@ -219,7 +220,33 @@ async function getTransactionsForAccount(page, account, timeRange) {
   await selectTimeRange(page, account, timeRange);
   await page.waitFor(250);
 
-  let transactions = await getTransactions(page);
+  return await getTransactions(page);
+}
+
+function exportToFile(outFolder, output) {
+  const combinedPath = path.join(
+    outFolder,
+    output.account.name.replace(/[/\|&;$%@"<>()+,* ]/g, "")
+  );
+
+  console.log("Writing data:", output, " to folder:", combinedPath);
+
+  fs.ensureDirSync(combinedPath);
+  fs.writeFileSync(
+    path.join(
+      combinedPath,
+      output.timeRange.from + "_" + output.timeRange.to + ".json"
+    ),
+    JSON.stringify(output),
+    "utf8",
+    err => {
+      if (err) {
+        log.error("Could not write file.", err);
+        throw err;
+      }
+      log.debug("Done writing transactions to file.");
+    }
+  );
 }
 
 class DkbScraper {
@@ -271,11 +298,18 @@ class DkbScraper {
 
     for (let index = 0; index < accountsToScrape.length; index++) {
       try {
-        await getTransactionsForAccount(
+        const account = accountsToScrape[index];
+        const transactions = await getTransactionsForAccount(
           page,
-          accountsToScrape[index],
+          account,
           timeRange
         );
+
+        exportToFile(this.options.outputFolder, {
+          account: account,
+          timeRange: timeRange,
+          transactions: transactions
+        });
       } catch (error) {
         log.error("getTransactionsForAccount:", error);
         await createScreenshot(
@@ -314,6 +348,10 @@ program
     "-s, --screenshotDir <screenshotDir>",
     "Specifies visual logging via screenshots."
   )
+  .option(
+    "-o, --outputFolder <outputFolder>",
+    "Specifies output folder for transactions."
+  )
   .option("-i, --interactive-mode", "Shows the browser window.")
   .action(async (accounts, options) => {
     if (accounts.length === 0 || !options.from || !options.to) {
@@ -331,10 +369,13 @@ program
     if (options.interactiveMode) {
       log.info("Running the browser in interactive mode.");
     }
+
     options.screenshotDir = options.screenshotDir || "./screenshots";
-    if (options.screenshotDir) {
-      log.info("Enabled screenshots to: " + options.screenshotDir);
-    }
+    log.info("Enabled screenshots to: " + options.screenshotDir);
+    fs.ensureDirSync(options.screenshotDir);
+
+    options.outputFolder = options.outputFolder || "./output";
+    log.info("Enabled exports to: " + options.outputFolder);
 
     log.info("Scraping transactions for accounts:", accounts);
     const scraper = new DkbScraper(options);
