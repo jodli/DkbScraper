@@ -36,16 +36,16 @@ exports = module.exports = this;
 async function focusInputField(page, selector) {
   log.debug("Focusing input field");
   const inputField = await page.$(selector);
-  await inputField.focus();
+  // await inputField.focus();
   return inputField;
 }
 
 async function selectAllText(page) {
   log.debug("Selecting all text");
-  await page.keyboard.down("Control");
-  await page.keyboard.down("A");
-  await page.keyboard.up("A");
-  await page.keyboard.up("Control");
+  // await page.keyboard.down("Control");
+  // await page.keyboard.down("A");
+  // await page.keyboard.up("A");
+  // await page.keyboard.up("Control");
 }
 
 async function typeInInputField(inputField, text) {
@@ -384,5 +384,9 @@ program
       process.exit(1);
     });
   });
+
+if (!process.argv.slice(2).length) {
+  program.help();
+}
 
 program.parse(process.argv);
