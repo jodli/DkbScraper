@@ -36,7 +36,6 @@ exports = module.exports = this;
 async function focusInputField(page, selector) {
   log.debug("Focusing input field:", selector);
   const inputField = await page.$(selector);
-  await inputField.focus();
   return inputField;
 }
 
@@ -180,6 +179,7 @@ async function selectTimeRange(page, account, timeRange) {
     default:
       reject();
   }
+  await page.waitFor(1000);
 
   const fromInputField = await focusInputField(page, fromInputSelector);
   await clearText(page, fromInputSelector);
