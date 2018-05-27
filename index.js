@@ -287,11 +287,15 @@ class DkbScraper {
       process.exit(1);
     }
 
-    const accountsToScrape = allAccounts.filter(
-      allAccount =>
-        accounts.filter(account => allAccount.name.indexOf(account) !== -1)
-          .length > 0
-    );
+    const accountsToScrape =
+      accounts[0] === "all"
+        ? allAccounts
+        : allAccounts.filter(
+            allAccount =>
+              accounts.filter(
+                account => allAccount.name.indexOf(account) !== -1
+              ).length > 0
+          );
 
     for (let index = 0; index < accountsToScrape.length; index++) {
       try {
@@ -335,7 +339,7 @@ program.version("0.1.0");
 program
   .command("scrape [accounts...]")
   .description(
-    "Which account(s)? Either specify a IBAN or the credit card number in the following format: "
+    "Which account(s)? Either specify an IBAN, a credit card number or type 'all' to query all accounts."
   )
   .option("--from <from>", "From which date?")
   .option("--to <to>", "Until which date?")
