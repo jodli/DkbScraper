@@ -34,18 +34,15 @@ const TransactionType = Object.freeze({ debit: 0, credit: 1 });
 exports = module.exports = this;
 
 async function focusInputField(page, selector) {
-  log.debug("Focusing input field");
+  log.debug("Focusing input field:", selector);
   const inputField = await page.$(selector);
-  // await inputField.focus();
+  await inputField.focus();
   return inputField;
 }
 
-async function selectAllText(page) {
-  log.debug("Selecting all text");
-  // await page.keyboard.down("Control");
-  // await page.keyboard.down("A");
-  // await page.keyboard.up("A");
-  // await page.keyboard.up("Control");
+async function clearText(page, selector) {
+  log.debug("Clearing input field:", selector);
+  await page.$eval(selector, input => (input.value = ""));
 }
 
 async function typeInInputField(inputField, text) {
@@ -185,11 +182,11 @@ async function selectTimeRange(page, account, timeRange) {
   }
 
   const fromInputField = await focusInputField(page, fromInputSelector);
-  await selectAllText(page);
+  await clearText(page, fromInputSelector);
   await typeInInputField(fromInputField, timeRange.from);
 
   const toInputField = await focusInputField(page, toInputSelector);
-  await selectAllText(page);
+  await clearText(page, toInputSelector);
   await typeInInputField(toInputField, timeRange.to);
 
   page.click(TransactionsSearchButton);
@@ -229,7 +226,7 @@ function exportToFile(outFolder, output) {
     output.account.name.replace(/[/\|&;$%@"<>()+,* ]/g, "")
   );
 
-  console.log("Writing data:", output, " to folder:", combinedPath);
+  log.info("Writing data:", output, " to folder:", combinedPath);
 
   fs.ensureDirSync(combinedPath);
   fs.writeFileSync(
