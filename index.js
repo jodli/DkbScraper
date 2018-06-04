@@ -21,6 +21,9 @@ const TransactionsMenu = "#menu_0\\2e 0\\2e 0-node";
 
 const AccountSelect = "select[id$='_slAllAccounts']";
 
+const SaldoSpan =
+  "div.clearfix.module.accountBalance > span.floatRight > strong > span";
+
 const TransactionsDebitFrom = "input[id$='_transactionDate']";
 const TransactionsDebitTo = "input[id$='_toTransactionDate']";
 const TransactionsCreditFrom = "input[id$='_postingDate']";
@@ -49,6 +52,11 @@ async function typeInInputField(inputField, text) {
   await inputField.type(text, {
     delay: 10
   });
+}
+
+async function getInnerText(page, selector) {
+  const text = page.$eval(selector, element => element.innerText);
+  return text;
 }
 
 async function waitForNavigation(page) {
@@ -210,10 +218,14 @@ async function getTransactions(page) {
   return transactions;
 }
 
+async function getSaldoForAccount(page) {
+  log.info("Getting saldo for account.");
+  return await getInnerText(page, SaldoSpan);
+}
+
 async function getTransactionsForAccount(page, account, timeRange) {
   log.info("Getting transactions for account:", account);
 
-  await selectAccount(page, account);
   await selectTimeRange(page, account, timeRange);
   await page.waitFor(250);
 
@@ -300,6 +312,10 @@ class DkbScraper {
     for (let index = 0; index < accountsToScrape.length; index++) {
       try {
         const account = accountsToScrape[index];
+        await selectAccount(page, account);
+
+        await page.waitFor(250);
+        const saldo = await getSaldoForAccount(page);
         const transactions = await getTransactionsForAccount(
           page,
           account,
@@ -308,6 +324,7 @@ class DkbScraper {
 
         exportToFile(this.options.outputFolder, {
           account: account,
+          saldo: saldo,
           timeRange: timeRange,
           transactions: transactions
         });
