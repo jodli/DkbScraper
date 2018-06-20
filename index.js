@@ -258,6 +258,15 @@ function exportToFile(outFolder, output) {
   );
 }
 
+async function handleError(page, message, error) {
+  log.error(message, error);
+  await createScreenshot(
+    page,
+    path.join(this.options.screenshotDir, "error.png")
+  );
+  process.exit(1);
+}
+
 class DkbScraper {
   constructor(options) {
     this.options = options;
@@ -278,12 +287,7 @@ class DkbScraper {
     try {
       await navigateToTransactions(page);
     } catch (error) {
-      log.error("navigateToTransactions:", error);
-      await createScreenshot(
-        page,
-        path.join(this.options.screenshotDir, "error.png")
-      );
-      process.exit(1);
+      await handleError(page, "navigateToTransactions:", error);
     }
 
     const timeRange = { from: this.options.from, to: this.options.to };
@@ -291,12 +295,7 @@ class DkbScraper {
     try {
       allAccounts = await getAllAccounts(page);
     } catch (error) {
-      log.error("getAllAccounts:", error);
-      await createScreenshot(
-        page,
-        path.join(this.options.screenshotDir, "error.png")
-      );
-      process.exit(1);
+      await handleError(page, "getAllAccounts:", error);
     }
 
     const accountsToScrape =
@@ -329,12 +328,7 @@ class DkbScraper {
           transactions: transactions
         });
       } catch (error) {
-        log.error("getTransactionsForAccount:", error);
-        await createScreenshot(
-          page,
-          path.join(this.options.screenshotDir, "error.png")
-        );
-        process.exit(1);
+        await handleError(page, "getTransactionsForAccount:", error);
       }
     }
 
