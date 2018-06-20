@@ -3,6 +3,7 @@ const log = require("loglevel");
 const path = require("path");
 const program = require("commander");
 const fs = require("fs-extra");
+const listr = require("listr");
 
 require("dotenv").config();
 
@@ -264,83 +265,152 @@ async function handleError(page, message, error) {
     page,
     path.join(this.options.screenshotDir, "error.png")
   );
-  process.exit(1);
+  Promise.reject();
 }
 
 class DkbScraper {
-  constructor(options) {
+  constructor(options, accounts) {
     this.options = options;
+    this.accounts = accounts;
   }
 
-  async scrape(accounts) {
-    const { page, browser } = await startAndNavigateToLoginPage({
-      interactiveMode: this.options.interactiveMode,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
-
-    await createScreenshot(
-      page,
-      path.join(this.options.screenshotDir, "before_login.png")
-    );
-    await performLogin(page);
-
-    try {
-      await navigateToTransactions(page);
-    } catch (error) {
-      await handleError(page, "navigateToTransactions:", error);
-    }
-
-    const timeRange = { from: this.options.from, to: this.options.to };
-    let allAccounts;
-    try {
-      allAccounts = await getAllAccounts(page);
-    } catch (error) {
-      await handleError(page, "getAllAccounts:", error);
-    }
-
-    const accountsToScrape =
-      accounts[0] === "all"
-        ? allAccounts
-        : allAccounts.filter(
-            allAccount =>
-              accounts.filter(
-                account => allAccount.name.indexOf(account) !== -1
-              ).length > 0
+  async scrape() {
+    const tasks = new listr([
+      {
+        title: "Starting the browser and navigating to the login page",
+        task: async () => {
+          this.puppeteer = await startAndNavigateToLoginPage({
+            interactiveMode: this.options.interactiveMode,
+            args: ["--no-sandbox", "--disable-setuid-sandbox"]
+          });
+        }
+      },
+      {
+        title: "Logging in and navigating to transactions page",
+        task: async () => {
+          await createScreenshot(
+            this.puppeteer.page,
+            path.join(this.options.screenshotDir, "before_login.png")
           );
+          await performLogin(this.puppeteer.page);
+          try {
+            await navigateToTransactions(this.puppeteer.page);
+          } catch (error) {
+            await handleError(
+              this.puppeteer.page,
+              "navigateToTransactions:",
+              error
+            );
+          }
+        }
+      },
+      {
+        title: "Preparing the scrape",
+        task: async ctx => {
+          try {
+            this.allAccounts = await getAllAccounts(this.puppeteer.page);
+          } catch (error) {
+            await handleError(this.puppeteer.page, "getAllAccounts:", error);
+          }
+          ctx.accountsToScrape =
+            this.accounts[0] === "all"
+              ? this.allAccounts
+              : this.allAccounts.filter(
+                  allAccount =>
+                    this.accounts.filter(
+                      account => allAccount.name.indexOf(account) !== -1
+                    ).length > 0
+                );
+          ctx.timeRange = { from: this.options.from, to: this.options.to };
+        }
+      },
+      {
+        title: "Scraping...",
+        task: async ctx => {
+          for (let index = 0; index < ctx.accountsToScrape.length; index++) {
+            const subTasks = new listr([
+              {
+                title: "Selecting account and its saldo",
+                task: async innerCtx => {
+                  try {
+                    innerCtx.account = ctx.accountsToScrape[index];
+                    await selectAccount(this.puppeteer.page, innerCtx.account);
 
-    for (let index = 0; index < accountsToScrape.length; index++) {
-      try {
-        const account = accountsToScrape[index];
-        await selectAccount(page, account);
-
-        await page.waitFor(250);
-        const saldo = await getSaldoForAccount(page);
-        const transactions = await getTransactionsForAccount(
-          page,
-          account,
-          timeRange
-        );
-
-        exportToFile(this.options.outputFolder, {
-          account: account,
-          saldo: saldo,
-          timeRange: timeRange,
-          transactions: transactions
-        });
-      } catch (error) {
-        await handleError(page, "getTransactionsForAccount:", error);
+                    await this.puppeteer.page.waitFor(250);
+                    innerCtx.saldo = await getSaldoForAccount(
+                      this.puppeteer.page
+                    );
+                  } catch (error) {
+                    await handleError(
+                      this.puppeteer.page,
+                      "getTransactionsForAccount:",
+                      error
+                    );
+                  }
+                }
+              },
+              {
+                title: "Getting transactions for the account",
+                task: async innerCtx => {
+                  try {
+                    innerCtx.transactions = await getTransactionsForAccount(
+                      this.puppeteer.page,
+                      innerCtx.account,
+                      ctx.timeRange
+                    );
+                  } catch (error) {
+                    await handleError(
+                      this.puppeteer.page,
+                      "getTransactionsForAccount:",
+                      error
+                    );
+                  }
+                }
+              },
+              {
+                title: "Exporting everything to a file",
+                task: async innerCtx => {
+                  try {
+                    exportToFile(this.options.outputFolder, {
+                      account: innerCtx.account,
+                      saldo: innerCtx.saldo,
+                      timeRange: ctx.timeRange,
+                      transactions: innerCtx.transactions
+                    });
+                  } catch (error) {
+                    await handleError(
+                      this.puppeteer.page,
+                      "getTransactionsForAccount:",
+                      error
+                    );
+                  }
+                }
+              }
+            ]);
+            await subTasks.run();
+          }
+        }
+      },
+      {
+        title: "Logging out",
+        task: async () => {
+          await performLogout(this.puppeteer.page);
+          await createScreenshot(
+            this.puppeteer.page,
+            path.join(this.options.screenshotDir, "after_logout.png")
+          );
+        }
+      },
+      {
+        title: "Cleaning up",
+        task: async () => {
+          this.puppeteer.browser.close();
+          log.info("Closed browser.");
+          Promise.resolve();
+        }
       }
-    }
-
-    await performLogout(page);
-    await createScreenshot(
-      page,
-      path.join(this.options.screenshotDir, "after_logout.png")
-    );
-
-    browser.close();
-    log.info("Closed browser.");
-    process.exit(0);
+    ]);
+    return tasks.run();
   }
 }
 
@@ -390,8 +460,8 @@ program
     log.info("Enabled exports to: " + options.outputFolder);
 
     log.info("Scraping transactions for accounts:", accounts);
-    const scraper = new DkbScraper(options);
-    await scraper.scrape(accounts).catch(error => {
+    const scraper = new DkbScraper(options, accounts);
+    await scraper.scrape().catch(error => {
       log.error("globalScope:", error);
       process.exit(1);
     });
