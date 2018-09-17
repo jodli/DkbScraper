@@ -436,7 +436,7 @@ class DkbScraper {
           });
 
           const options = {
-            signingKey: fs.readFileSync(this.options.privatekey, "binary"),
+            signingKey: fs.readFileSync(this.options.privateKey, "binary"),
             passphrase: process.env.PRIVATEKEY_PASSPHRASE
           };
 
@@ -445,7 +445,7 @@ class DkbScraper {
             from: process.env.MAIL_FROM,
             to: process.env.MAIL_TO,
             subject: "Stuff!",
-            encryptionKeys: fs.readFileSync(this.options.publickey, "binary"),
+            encryptionKeys: fs.readFileSync(this.options.publicKey, "binary"),
             text: "New saldos:\n\n",
             attachments: []
           };
