@@ -4,8 +4,21 @@ const path = require("path");
 const program = require("commander");
 const fs = require("fs-extra");
 const listr = require("listr");
+const nodemailer = require("nodemailer");
+const openpgpEncrypt = require("nodemailer-openpgp").openpgpEncrypt;
 
 require("dotenv").config();
+
+let poolConfig = {
+  pool: true,
+  host: process.env.MAIL_HOST,
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PW
+  }
+};
 
 // URLs
 const BaseUrl = "https://www.dkb.de/banking";
@@ -242,21 +255,18 @@ function exportToFile(outFolder, output) {
   log.info("Writing data:", output, " to folder:", combinedPath);
 
   fs.ensureDirSync(combinedPath);
-  fs.writeFileSync(
-    path.join(
-      combinedPath,
-      output.timeRange.from + "_" + output.timeRange.to + ".json"
-    ),
-    JSON.stringify(output),
-    "utf8",
-    err => {
-      if (err) {
-        log.error("Could not write file.", err);
-        throw err;
-      }
-      log.debug("Done writing transactions to file.");
-    }
+  const filePath = path.join(
+    combinedPath,
+    output.timeRange.from + "_" + output.timeRange.to + ".json"
   );
+  fs.writeFileSync(filePath, JSON.stringify(output), "utf8", err => {
+    if (err) {
+      log.error("Could not write file.", err);
+      throw err;
+    }
+    log.debug("Done writing transactions to file.");
+  });
+  return filePath;
 }
 
 async function handleError(page, message, error) {
@@ -327,6 +337,7 @@ class DkbScraper {
       {
         title: "Scraping...",
         task: async ctx => {
+          ctx.writtenFiles = [];
           for (let index = 0; index < ctx.accountsToScrape.length; index++) {
             const subTasks = new listr([
               {
@@ -371,12 +382,16 @@ class DkbScraper {
                 title: "Exporting everything to a file",
                 task: async innerCtx => {
                   try {
-                    exportToFile(this.options.outputFolder, {
+                    const filePath = exportToFile(this.options.outputFolder, {
                       account: innerCtx.account,
                       saldo: innerCtx.saldo,
                       timeRange: ctx.timeRange,
                       transactions: innerCtx.transactions
                     });
+                    ctx.writtenFiles[index] = {
+                      filePath: filePath,
+                      saldo: innerCtx.saldo
+                    };
                   } catch (error) {
                     await handleError(
                       this.puppeteer.page,
@@ -408,6 +423,56 @@ class DkbScraper {
           log.info("Closed browser.");
           Promise.resolve();
         }
+      },
+      {
+        title: "Sending mail with attachments",
+        enabled: () => this.options.mailing,
+        task: async ctx => {
+          let transporter = nodemailer.createTransport(poolConfig);
+
+          transporter.verify(function(error, success) {
+            if (error) {
+              Promise.reject(error);
+            } else {
+              log.debug(success);
+            }
+          });
+
+          const options = {
+            signingKey: fs.readFileSync(options.privatekey, "binary"),
+            passphrase: process.env.PRIVATEKEY_PASSPHRASE
+          };
+
+          transporter.use("stream", openpgpEncrypt(options));
+          let message = {
+            from: process.env.MAIL_FROM,
+            to: process.env.MAIL_TO,
+            subject: "Stuff!",
+            encryptionKeys: fs.readFileSync(options.publickey, "binary"),
+            text: "New saldos:\n\n",
+            attachments: []
+          };
+
+          for (let index = 0; index < ctx.writtenFiles.length; index++) {
+            message.text +=
+              path.dirname(ctx.writtenFiles[index].filePath) +
+              ": " +
+              ctx.writtenFiles[index].saldo +
+              "\n";
+            message.attachments.push({
+              path: ctx.writtenFiles[index].filePath
+            });
+          }
+
+          transporter.sendMail(message, (error, info) => {
+            if (error) {
+              Promise.reject(error);
+            } else {
+              log.debug(info);
+              Promise.resolve();
+            }
+          });
+        }
       }
     ]);
     return tasks.run();
@@ -415,7 +480,7 @@ class DkbScraper {
 }
 
 log.setLevel("warn");
-program.version("0.1.0");
+program.version("0.2.0");
 
 program
   .command("scrape [accounts...]")
@@ -435,6 +500,8 @@ program
     "Specifies output folder for transactions."
   )
   .option("-i, --interactive-mode", "Shows the browser window.")
+  .option("--publicKey <publicKey>", "Specifies the path to the public key.")
+  .option("--privateKey <privateKey>", "Specifies the path to the private key.")
   .action(async (accounts, options) => {
     if (accounts.length === 0 || !options.from || !options.to) {
       program.help();
@@ -455,6 +522,18 @@ program
     options.screenshotDir = options.screenshotDir || "./screenshots";
     log.info("Enabled screenshots to: " + options.screenshotDir);
     fs.ensureDirSync(options.screenshotDir);
+
+    options.mailing =
+      options.privateKey &&
+      options.publicKey &&
+      fs.pathExistsSync(options.privateKey) &&
+      fs.pathExistsSync(options.publicKey);
+    if (options.mailing) {
+      log.info("Enabled mailing with public (" + options.publicKey) +
+        ") and private key (" +
+        options.privateKey +
+        ")";
+    }
 
     options.outputFolder = options.outputFolder || "./output";
     log.info("Enabled exports to: " + options.outputFolder);

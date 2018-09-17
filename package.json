@@ -16,6 +16,8 @@
     "fs-extra": "^5.0.0",
     "listr": "^0.14.1",
     "loglevel": "^1.6.1",
+    "nodemailer": "^4.6.7",
+    "nodemailer-openpgp": "^1.2.0",
     "puppeteer": "^1.3.0"
   }
 }
