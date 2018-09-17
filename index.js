@@ -271,10 +271,7 @@ function exportToFile(outFolder, output) {
 
 async function handleError(page, message, error) {
   log.error(message, error);
-  await createScreenshot(
-    page,
-    path.join(this.options.screenshotDir, "error.png")
-  );
+  await createScreenshot(page, path.join("./", "error.png"));
   Promise.reject();
 }
 
@@ -439,7 +436,7 @@ class DkbScraper {
           });
 
           const options = {
-            signingKey: fs.readFileSync(options.privatekey, "binary"),
+            signingKey: fs.readFileSync(this.options.privatekey, "binary"),
             passphrase: process.env.PRIVATEKEY_PASSPHRASE
           };
 
@@ -448,7 +445,7 @@ class DkbScraper {
             from: process.env.MAIL_FROM,
             to: process.env.MAIL_TO,
             subject: "Stuff!",
-            encryptionKeys: fs.readFileSync(options.publickey, "binary"),
+            encryptionKeys: fs.readFileSync(this.options.publickey, "binary"),
             text: "New saldos:\n\n",
             attachments: []
           };
