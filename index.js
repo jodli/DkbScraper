@@ -223,10 +223,9 @@ async function getCsvExport(page, downloadPath) {
 
 async function handleError(page, message, error) {
   log.error(message, error);
-  await createScreenshot(
-    page,
-    path.join(this.options.screenshotDir, "error.png")
-  );
+  if (page !== undefined && this !== undefined) {
+    await createScreenshot(page, path.join(this.options.screenshotDir, 'error.png'));
+  }
   process.exit(1);
 }
 
