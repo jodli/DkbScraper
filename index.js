@@ -47,8 +47,12 @@ async function clearText(page, selector) {
   await page.$eval(selector, input => (input.value = ""));
 }
 
-async function typeInInputField(inputField, text) {
-  log.debug("Typing text", text);
+async function typeInInputField(inputField, text, isPassword = false) {
+  if (!isPassword) {
+    log.debug('Typing text', text);
+  } else {
+    log.debug('Typing text', '***');
+  }
   await inputField.type(text, {
     delay: 10
   });
@@ -107,7 +111,7 @@ async function performLogin(page) {
 
   log.debug("Select pin input field.");
   const pinInputField = await focusInputField(page, LoginPinInput);
-  await typeInInputField(pinInputField, process.env.LOGIN_PIN);
+  await typeInInputField(pinInputField, process.env.LOGIN_PIN, true);
 
   log.debug("Pressing login button.");
   await page.click(LoginButton);
