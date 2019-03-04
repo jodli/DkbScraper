@@ -21,16 +21,14 @@ const TransactionsMenu = "#menu_0\\2e 0\\2e 0-node";
 
 const AccountSelect = "select[id$='_slAllAccounts']";
 
-const SaldoSpan =
-  "div.clearfix.module.accountBalance > span.floatRight > strong > span";
-
 const TransactionsDebitFrom = "input[id$='_transactionDate']";
 const TransactionsDebitTo = "input[id$='_toTransactionDate']";
 const TransactionsCreditFrom = "input[id$='_postingDate']";
 const TransactionsCreditTo = "input[id$='_toPostingDate']";
 const TransactionsSearchButton = "#searchbutton";
 
-const TransactionsResultClass = "mainRow";
+const ExportCsvSelector =
+  '#contentHome > div.clearfix.grid_4.col2 > div > h1 > a.noSpinner.evt-csvExport > span';
 
 const TransactionType = Object.freeze({ debit: 0, credit: 1 });
 
@@ -56,11 +54,6 @@ async function typeInInputField(inputField, text, isPassword = false) {
   await inputField.type(text, {
     delay: 10
   });
-}
-
-async function getInnerText(page, selector) {
-  const text = page.$eval(selector, element => element.innerText);
-  return text;
 }
 
 async function waitForNavigation(page) {
@@ -112,6 +105,7 @@ async function performLogin(page) {
   log.debug("Select pin input field.");
   const pinInputField = await focusInputField(page, LoginPinInput);
   await typeInInputField(pinInputField, process.env.LOGIN_PIN, true);
+  await page.waitFor(250);
 
   log.debug("Pressing login button.");
   await page.click(LoginButton);
@@ -206,60 +200,25 @@ async function selectTimeRange(page, account, timeRange) {
   await page.waitFor(1000);
 }
 
-async function getTransactions(page) {
-  log.info("Getting transactions.");
-  const transactions = await page.evaluate(resultClassName => {
-    var trs = Array.from(document.getElementsByClassName(resultClassName));
-    return trs.map(tr => {
-      var tds = Array.from(tr.children);
-      return tds.map(td => {
-        return td.innerText.trim();
-      });
-    });
-  }, TransactionsResultClass);
-  log.debug(transactions);
+async function getCsvExport(page, downloadPath) {
+  log.info('Exporting CSV');
+  const cdp = await page.target().createCDPSession();
 
-  return transactions;
-}
+  const combinedPath = path.join(__dirname, downloadPath);
+  log.debug('Setting downloadPath to ' + combinedPath);
+  await cdp.send('Page.setDownloadBehavior', {
+    behavior: 'allow',
+    downloadPath: combinedPath
+  });
 
-async function getSaldoForAccount(page) {
-  log.info("Getting saldo for account.");
-  return await getInnerText(page, SaldoSpan);
-}
+  var href = await page.$(ExportCsvSelector);
+  await href.click();
+  log.debug('Downloading...');
 
-async function getTransactionsForAccount(page, account, timeRange) {
-  log.info("Getting transactions for account:", account);
-
-  await selectTimeRange(page, account, timeRange);
-  await page.waitFor(250);
-
-  return await getTransactions(page);
-}
-
-function exportToFile(outFolder, output) {
-  const combinedPath = path.join(
-    outFolder,
-    output.account.name.replace(/[/\|&;$%@"<>()+,* ]/g, "")
-  );
-
-  log.info("Writing data:", output, " to folder:", combinedPath);
-
-  fs.ensureDirSync(combinedPath);
-  fs.writeFileSync(
-    path.join(
-      combinedPath,
-      output.timeRange.from + "_" + output.timeRange.to + ".json"
-    ),
-    JSON.stringify(output),
-    "utf8",
-    err => {
-      if (err) {
-        log.error("Could not write file.", err);
-        throw err;
-      }
-      log.debug("Done writing transactions to file.");
-    }
-  );
+  await page.waitFor(1250);
+  await cdp.detach();
+  log.debug('Done');
+  await page.waitFor(500);
 }
 
 async function handleError(page, message, error) {
@@ -316,21 +275,11 @@ class DkbScraper {
       try {
         const account = accountsToScrape[index];
         await selectAccount(page, account);
-
         await page.waitFor(250);
-        const saldo = await getSaldoForAccount(page);
-        const transactions = await getTransactionsForAccount(
-          page,
-          account,
-          timeRange
-        );
 
-        exportToFile(this.options.outputFolder, {
-          account: account,
-          saldo: saldo,
-          timeRange: timeRange,
-          transactions: transactions
-        });
+        await selectTimeRange(page, account, timeRange);
+
+        await getCsvExport(page, this.options.outputFolder);
       } catch (error) {
         await handleError(page, "getTransactionsForAccount:", error);
       }
@@ -348,8 +297,8 @@ class DkbScraper {
   }
 }
 
-log.setLevel("warn");
-program.version("0.1.0");
+log.setLevel('warn');
+program.version('0.2.0');
 
 program
   .command("scrape [accounts...]")
@@ -390,8 +339,7 @@ program
     log.info("Enabled screenshots to: " + options.screenshotDir);
     fs.ensureDirSync(options.screenshotDir);
 
-    options.outputFolder = options.outputFolder || "./output";
-    log.info("Enabled exports to: " + options.outputFolder);
+    options.outputFolder = options.outputFolder || './exports';
 
     log.info("Scraping transactions for accounts:", accounts);
     const scraper = new DkbScraper(options);
