@@ -268,7 +268,7 @@ class DkbScraper {
 
         await selectTimeRange(page, account, timeRange);
 
-        await getCsvExport(page, this.options.outputFolder);
+        await getCsvExport(page, this.options.exportFolder);
       } catch (error) {
         await handleError(page, 'getTransactionsForAccount:', error);
       }
@@ -294,7 +294,7 @@ program
   .option('-v, --verbose', 'Enables verbose logging.')
   .option('-t, --trace', 'Enables trace logging.')
   .option('-s, --screenshotDir <screenshotDir>', 'Specifies visual logging via screenshots.')
-  .option('-o, --outputFolder <outputFolder>', 'Specifies output folder for transactions.')
+  .option('-e, --exportFolder <exportFolder>', 'Specifies export folder for transactions.')
   .option('-i, --interactive-mode', 'Shows the browser window.')
 
   .action(async (from, to, accounts, options) => {
@@ -315,8 +315,8 @@ program
     log.info('Enabled screenshots to: ' + options.screenshotDir);
     fs.ensureDirSync(options.screenshotDir);
 
-    options.outputFolder = options.outputFolder || './exports';
-    log.info('Enabled exports to: ' + options.outputFolder);
+    options.exportFolder = options.exportFolder || './exports';
+    log.info('Enabled exports to: ' + options.exportFolder);
 
     log.info('Scraping transactions...');
     log.info('From:', from, 'To:', to);
