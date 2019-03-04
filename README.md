@@ -29,8 +29,8 @@ After that it clicks on the "CSV Export" Button and saves the file in the specif
 
 ### Example
 
-`node index.js scrape --from 01.01.2019 --to 31.01.2019 DE123456`
+`node index.js scrape 01.01.2019 31.01.2019 DE123456 7890`
 
-This scrapes all transactions on the bank account containing the number "DE123456" that occured between the 01.01.2019 and the 31.01.2019.
+This scrapes all transactions on the bank account containing the number "DE123456" and the VISA card containing the number "7890" that occured between the 01.01.2019 and the 31.01.2019.
 
 For more information call the script with the `-h` flag to display the help file.
