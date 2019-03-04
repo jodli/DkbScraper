@@ -229,7 +229,7 @@ class DkbScraper {
     this.options = options;
   }
 
-  async scrape(accounts) {
+  async scrape(accounts, from, to) {
     const { page, browser } = await startAndNavigateToLoginPage({
       interactiveMode: this.options.interactiveMode,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -244,7 +244,7 @@ class DkbScraper {
       await handleError(page, 'navigateToTransactions:', error);
     }
 
-    const timeRange = { from: this.options.from, to: this.options.to };
+    const timeRange = { from: from, to: to };
     let allAccounts;
     try {
       allAccounts = await getAllAccounts(page);
@@ -287,21 +287,17 @@ log.setLevel('warn');
 program.version('0.2.0');
 
 program
-  .command('scrape [accounts...]')
+  .command('scrape <from> <to> <accounts...>')
   .description(
-    "Which account(s)? Either specify an IBAN, a credit card number or type 'all' to query all accounts."
+    'Scrapes the transactions in your DKB account.\nWhich account(s)? Either specify an IBAN, a credit card number or type "all" to query all accounts.'
   )
-  .option('--from <from>', 'From which date?')
-  .option('--to <to>', 'Until which date?')
   .option('-v, --verbose', 'Enables verbose logging.')
   .option('-t, --trace', 'Enables trace logging.')
   .option('-s, --screenshotDir <screenshotDir>', 'Specifies visual logging via screenshots.')
   .option('-o, --outputFolder <outputFolder>', 'Specifies output folder for transactions.')
   .option('-i, --interactive-mode', 'Shows the browser window.')
-  .action(async (accounts, options) => {
-    if (accounts.length === 0 || !options.from || !options.to) {
-      program.help();
-    }
+
+  .action(async (from, to, accounts, options) => {
     if (options.verbose) {
       log.setLevel('info');
       log.info('Enabled verbose logging.');
@@ -322,9 +318,11 @@ program
     options.outputFolder = options.outputFolder || './exports';
     log.info('Enabled exports to: ' + options.outputFolder);
 
-    log.info('Scraping transactions for accounts:', accounts);
+    log.info('Scraping transactions...');
+    log.info('From:', from, 'To:', to);
+    log.info('For accounts:', accounts);
     const scraper = new DkbScraper(options);
-    await scraper.scrape(accounts).catch(error => {
+    await scraper.scrape(accounts, from, to).catch(error => {
       log.error('globalScope:', error);
       process.exit(1);
     });
