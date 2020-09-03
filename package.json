@@ -15,6 +15,6 @@
     "dotenv": "^5.0.1",
     "fs-extra": "^5.0.0",
     "loglevel": "^1.6.1",
-    "puppeteer": "^1.12.2"
+    "puppeteer": "^1.13.0"
   }
 }
